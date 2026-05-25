@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# config/copy_trading.yaml
+#
+# PURPOSE: Controls the Polymarket copy-trading bot.
+#   - Target wallets to copy (addresses + labels + sizing weights)
+#   - CLOB API authentication settings
+#   - Risk management (drawdown limits, position limits, sizing mode)
+#   - Monitoring behavior (poll interval, trade detection window)
+#
+# SECRETS (never in this file — use .env):
+#   POLYMARKET_PRIVATE_KEY       Your wallet private key (0x...)
+#   POLYMARKET_FUNDER_ADDRESS    Only for email/Magic wallets
+#   POLYMARKET_API_KEY           Optional — derived automatically
+#   POLYMARKET_API_SECRET        Optional — derived automatically
+#   POLYMARKET_API_PASSPHRASE    Optional — derived automatically
+#
+# USAGE:
+#   poetry run copy-trading --config config/copy_trading.yaml
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Wallets to Copy ─────────────────────────────────────────────────────────
+# Add as many wallets as you want. Each can have:
+#   address: Wallet's public address (required)
+#   label:   Human-readable name for terminal display
+#   weight:  Size multiplier (1.0 = full size, 0.5 = half, 2.0 = double)
+wallets:
+  - address: "0x476639d9845d7a0261cb005dae6473f089ff5a03"
+    label: "Whale Alpha"
+    weight: 1.0
+  # - address: "0xANOTHER_WALLET_HERE"
+  #   label: "Smart Money 2"
+  #   weight: 0.5
+
+# ─── CLOB API Settings ────────────────────────────────────────────────────────
+clob:
+  # Wallet signature type:
+  #   0 = MetaMask / direct EOA wallet
+  #   1 = Email / Magic Link wallet (proxy wallet)
+  signature_type: 0
+  # CLOB API endpoint
+  host: "https://clob.polymarket.com"
+
+# ─── Risk Management ──────────────────────────────────────────────────────────
+risk:
+  # Maximum USDC to spend on any single copied trade
+  max_trade_amount_usdc: 10.0
+  # Minimum USDC per trade; trades below this are skipped
+  min_trade_amount_usdc: 1.0
+  # CIRCUIT BREAKER: if daily losses exceed this % of starting balance, halt all trading
+  max_daily_drawdown_pct: 5.0
+  # Maximum simultaneous open positions
+  max_open_positions: 20
+  # Maximum % of total balance in a single market
+  max_exposure_per_market_pct: 25.0
+  # Seconds to wait after a losing trade before copying again
+  cooldown_after_loss_seconds: 10
+  # Skip trade if price moved more than this % since target wallet traded (stale signal)
+  skip_if_price_moved_pct: 5.0
+
+  # Trade sizing mode:
+  #   fixed_usdc          → always use max_trade_amount_usdc
+  #   proportional_shares → copy floor(whale_shares × share_fraction)
+  sizing_mode: "fixed_usdc"
+  # Only used when sizing_mode = "proportional_shares":
+  # Fraction of whale's share count to copy
+  share_fraction: 0.1
+
+# ─── Monitoring ───────────────────────────────────────────────────────────────
+monitor:
+  # Seconds between polling each wallet for new trades
+  poll_interval_seconds: 15
+  # Trades older than this many seconds are ignored (prevents stale copies on restart)
+  max_trade_age_seconds: 300
+  # Data API endpoint for fetching wallet activity
+  data_api_url: "https://data-api.polymarket.com"
+  # Gamma API endpoint for market metadata
+  gamma_api_url: "https://gamma-api.polymarket.com"
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  # Directory to save CSV files of detected and executed trades
+  save_dir: "data/copy_trading"
+  # Whether to save detected trades to CSV
+  save_detected_trades: true
+  # Whether to save executed orders to CSV
+  save_executed_orders: true
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  # Log level: DEBUG | INFO | WARNING | ERROR
+  level: "INFO"
+  # Use JSON structured logs
+  use_json: false

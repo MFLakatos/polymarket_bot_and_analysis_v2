@@ -1,0 +1,107 @@
+[tool.poetry]
+name = "polymarket-graph"
+version = "0.2.0"
+description = "Graph analytics, crypto data, and trading bots for Polymarket."
+authors = ["Matías Fernández Lakatos <mfernandezlakatos@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "polymarket_graph", from = "src" },
+    { include = "copy_wallets_positions", from = "src" },
+    { include = "crypto_data", from = "src" },
+    { include = "download_wallet_positions", from = "src" },
+    { include = "save_wallet_positions", from = "src" },
+    { include = "btc_price_1s", from = "src" },
+    { include = "candle_pattern_analyzer", from = "src" },
+    { include = "btc_reversal_model", from = "src" },
+    { include = "btc_5m_trader", from = "src" },
+    { include = "analyze_wallet_positions", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# HTTP & data
+requests = "^2.32.0"
+pandas = "^2.2.0"
+numpy = "^1.26.0"
+pyarrow = "^16.0.0"
+tqdm = "^4.66.0"
+# ML & analytics
+scikit-learn = "^1.5.0"
+networkx = "^3.3"
+# Visualization
+matplotlib = "^3.9.0"
+plotly = "^5.22.0"
+# Database
+neo4j = "^5.22.0"
+# Config & infra
+pyyaml = "^6.0.1"
+pydantic = "^2.7.0"
+pydantic-settings = "^2.3.0"
+python-dotenv = "^1.0.1"
+tenacity = "^9.0.0"
+structlog = "^24.2.0"
+# CLI
+click = "^8.1.7"
+rich = "^13.7.0"
+# Blockchain
+web3 = "^7.16.0"
+# Optional extras
+py-clob-client-v2 = { version = "^1.0.0", optional = true }
+umap-learn = { version = "^0.5.6", optional = true }
+pyvis = { version = "^0.3.2", optional = true }
+jupyter = { version = "^1.0.0", optional = true }
+
+[tool.poetry.extras]
+viz = ["umap-learn", "pyvis"]
+copy-trading = ["py-clob-client-v2"]
+notebooks = ["jupyter"]
+all = ["py-clob-client-v2", "umap-learn", "pyvis", "jupyter"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+pytest-cov = "^5.0.0"
+pytest-mock = "^3.14.0"
+responses = "^0.25.0"
+ruff = "^0.5.0"
+mypy = "^1.10.0"
+
+# ─── CLI entry points ────────────────────────────────────────────────────────
+[tool.poetry.scripts]
+# Main Polymarket graph analytics pipeline
+polymarket-graph   = "polymarket_graph.cli:cli"
+# Copy trading bot
+copy-trading       = "copy_wallets_positions.main:main"
+# Crypto data download & analysis
+crypto-data        = "crypto_data.cli:cli"
+# Wallet positions download
+wallet-download    = "download_wallet_positions.cli:cli"
+# BTC 5-minute reversal bot (new modular version)
+btc-5m-bot         = "btc_5m_trader.cli:cli"
+# Build reversal dataset
+build-reversal-dataset = "btc_reversal_model.build_dataset:build"
+# Candle pattern analyzer
+candle-patterns    = "candle_pattern_analyzer.cli:cli"
+# Wallet position analysis
+analyze-wallet     = "analyze_wallet_positions.cli:cli"
+
+[build-system]
+requires = ["poetry-core>=1.7.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true

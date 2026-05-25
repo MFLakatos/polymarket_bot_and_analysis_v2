@@ -1,0 +1,96 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# docker-compose.yml
+#
+# Services:
+#   neo4j       Neo4j graph database (community edition + APOC + GDS plugins)
+#   app         Polymarket graph analytics application
+#
+# Usage:
+#   docker compose up -d neo4j            # start only the DB
+#   docker compose up -d                  # start everything
+#   docker compose run app run-all        # run full analytics pipeline
+#   docker compose run app ingest         # ingest only
+#   docker compose run crypto-data download  # download BTC price data
+#
+# Environment:
+#   Copy .env.example → .env and fill in secrets before starting.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Neo4j Graph Database ──────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.22-community
+    container_name: polymarket-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP / Neo4j Browser
+      - "7687:7687"   # Bolt protocol
+    environment:
+      # Auth: username/password  (override via .env)
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-change_me_strong_password}"
+      # Memory settings (tune to your host RAM)
+      NEO4J_server_memory_heap_initial__size: "1G"
+      NEO4J_server_memory_heap_max__size: "2G"
+      # Install APOC (utilities) and GDS (graph algorithms) plugins
+      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*,gds.*"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+      - ./neo4j/import:/var/lib/neo4j/import
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Polymarket Graph Analytics App ───────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polymarket-graph-app
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Override Neo4j URI to point to the container
+      NEO4J_URI: "bolt://neo4j:7687"
+      # Point to config folder
+      POLYMARKET_CONFIG_PATH: "/app/config/polymarket.yaml"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config:/app/config:ro
+    # Default command: run full pipeline
+    command: ["run-all"]
+
+  # ── Crypto Data (standalone — no Neo4j needed) ────────────────────────────
+  crypto-data:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: polymarket-crypto-data
+    env_file:
+      - .env
+    environment:
+      CRYPTO_CONFIG_PATH: "/app/config/crypto_data.yaml"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config:/app/config:ro
+    entrypoint: ["poetry", "run", "crypto-data"]
+    command: ["--help"]
+    profiles:
+      - crypto
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_plugins:

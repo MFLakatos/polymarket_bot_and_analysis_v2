@@ -1,0 +1,174 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# config/crypto_data.yaml
+#
+# PURPOSE: Controls the crypto price data download, storage, and analysis system.
+#   - Which coins to download (default: BTC, easily extensible to ETH, SOL, etc.)
+#   - Timeframes to download per coin (1s, 1m, 5m, 1h, 1d, etc.)
+#   - Binance API settings (endpoint, rate limits)
+#   - Local storage paths for each coin/timeframe
+#   - Analysis parameters (indicators, visualization defaults)
+#
+# USAGE:
+#   poetry run crypto-data download --config config/crypto_data.yaml
+#   poetry run crypto-data analyze  --config config/crypto_data.yaml
+#   poetry run crypto-data plot     --config config/crypto_data.yaml --coin BTC --timeframe 1h
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── Data Source ─────────────────────────────────────────────────────────────
+source:
+  # Exchange to pull data from (currently only Binance supported)
+  exchange: "binance"
+  # Binance REST API base URL
+  base_url: "https://api.binance.com"
+  # Max klines per request page (Binance cap: 1000)
+  page_size: 1000
+  # Seconds to wait between pages to respect rate limits
+  rate_limit_delay: 0.08
+  # HTTP timeout per request
+  timeout_seconds: 15
+
+# ─── Coins to Download ────────────────────────────────────────────────────────
+# Easily add more coins by appending to this list.
+# Each coin maps to a Binance trading pair (symbol) and a list of timeframes.
+coins:
+  - id: "BTC"
+    # Binance symbol; USDT is the quote currency
+    symbol: "BTCUSDT"
+    # Human-readable name (used in chart titles, filenames)
+    name: "Bitcoin"
+    # List of Kline intervals to download for this coin
+    # Binance intervals: 1s, 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+    timeframes:
+      - interval: "1s"
+        # How many hours of history to download for this interval
+        hours: 24
+        # Filename (relative to storage.base_path/{coin_id}/)
+        filename: "btc_1s.parquet"
+      - interval: "1m"
+        hours: 720      # 30 days
+        filename: "btc_1m.parquet"
+      - interval: "5m"
+        hours: 2160     # 90 days
+        filename: "btc_5m.parquet"
+      - interval: "1h"
+        hours: 8760     # 1 year
+        filename: "btc_1h.parquet"
+      - interval: "1d"
+        hours: 87600    # ~10 years
+        filename: "btc_1d.parquet"
+
+  # ── Uncomment to add Ethereum ──────────────────────────────────────────────
+  # - id: "ETH"
+  #   symbol: "ETHUSDT"
+  #   name: "Ethereum"
+  #   timeframes:
+  #     - interval: "1m"
+  #       hours: 720
+  #       filename: "eth_1m.parquet"
+  #     - interval: "1h"
+  #       hours: 8760
+  #       filename: "eth_1h.parquet"
+  #     - interval: "1d"
+  #       hours: 87600
+  #       filename: "eth_1d.parquet"
+
+  # ── Uncomment to add Solana ────────────────────────────────────────────────
+  # - id: "SOL"
+  #   symbol: "SOLUSDT"
+  #   name: "Solana"
+  #   timeframes:
+  #     - interval: "1h"
+  #       hours: 8760
+  #       filename: "sol_1h.parquet"
+  #     - interval: "1d"
+  #       hours: 43800
+  #       filename: "sol_1d.parquet"
+
+# ─── Storage ─────────────────────────────────────────────────────────────────
+storage:
+  # Root directory for all downloaded price data
+  # Final path: {base_path}/{coin_id}/{filename}
+  base_path: "data/crypto"
+  # Whether to cache downloaded data and skip re-download if file exists
+  use_cache: true
+  # Parquet compression codec: snappy | gzip | zstd | none
+  parquet_compression: "snappy"
+
+# ─── Analysis ─────────────────────────────────────────────────────────────────
+analysis:
+  # Technical indicators to compute when loading data for analysis
+  indicators:
+    # Simple moving averages (periods in candle units)
+    sma: [20, 50, 200]
+    # Exponential moving averages
+    ema: [12, 26]
+    # Relative Strength Index period
+    rsi_period: 14
+    # MACD parameters: fast EMA, slow EMA, signal line
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    # Bollinger Bands period and standard deviation multiplier
+    bb_period: 20
+    bb_std: 2.0
+
+  # Default number of candles to load when using the loader (0 = all)
+  default_lookback: 0
+
+# ─── Visualization ───────────────────────────────────────────────────────────
+visualization:
+  # Default chart style: dark | light
+  style: "dark"
+  # Default figure size in inches
+  figsize: [16, 9]
+  # Default output directory for saved charts
+  output_path: "output/charts"
+  # Whether to open charts in browser automatically after generating
+  auto_open: false
+
+
+# ─── Filters ─────────────────────────────────────────────────────────────────
+# Applied when loading data for analysis (NOT during download — raw data is
+# always kept intact so you can change filters without re-downloading).
+#
+# All filters operate on open_time (UTC). They drop rows silently and print
+# a summary of how many rows were removed.
+filters:
+  # Drop Saturday and Sunday candles (UTC calendar day)
+  exclude_weekends: false
+
+  # Drop candles outside NYSE regular trading hours: 09:30–16:00 ET (DST-aware).
+  # Requires zoneinfo (Python 3.9+) or pytz for correct DST handling.
+  # Falls back to fixed UTC window 13:30–20:00 if neither is available.
+  exclude_outside_nyse: false
+
+  # Drop candles on known NYSE public holidays (hardcoded list 2024–2026).
+  # Extend the _NYSE_HOLIDAYS set in crypto_data/filters.py as needed.
+  exclude_nyse_holidays: false
+
+  # Session filter: keep only candles within the specified trading sessions.
+  sessions:
+    # Master switch — set to true to enable session filtering
+    enabled: false
+
+    # List of sessions to KEEP. Empty = nothing filtered (no-op).
+    # Available sessions and their UTC windows:
+    #   Asia              00:00 – 09:00 UTC  (Tokyo / Sydney)
+    #   Europe            07:00 – 16:30 UTC  (Frankfurt / London)
+    #   New_York          13:30 – 20:00 UTC  (NYSE, EDT approximation)
+    #   Overlap_EU_NY     13:30 – 16:30 UTC  (both Europe and NY open)
+    #   Overlap_Asia_EU   07:00 – 09:00 UTC  (both Asia and EU open)
+    #   New_York_Extended 12:00 – 21:00 UTC  (pre + post market)
+    #   All               00:00 – 23:59 UTC  (no filtering, explicit)
+    active_sessions: []
+    # Examples:
+    # active_sessions: ["New_York"]                    ← NYSE hours only
+    # active_sessions: ["Europe", "New_York"]          ← both EU and NY sessions
+    # active_sessions: ["Overlap_EU_NY"]               ← only the overlap window
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  # Log level: DEBUG | INFO | WARNING | ERROR
+  level: "INFO"
+  # Use JSON structured logs (false = human-readable)
+  use_json: false

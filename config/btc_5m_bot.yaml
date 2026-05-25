@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# config/btc_5m_bot.yaml
+#
+# PURPOSE: Controls the BTC Up/Down 5-minute reversal trading bot.
+#   - General behavior (poll interval, dataset path, model smoothing)
+#   - Display settings (terminal dashboard)
+#   - Trading settings (direction, tiers, position limits)
+#   - Chainlink price source settings
+#
+# The bot monitors Polymarket's "BTC Up or Down 5m" market and uses a
+# statistical reversal-probability model to decide when to buy Up/Down shares.
+#
+# SECRETS (in .env, not here):
+#   POLYMARKET_PRIVATE_KEY      Your wallet private key
+#   POLYMARKET_FUNDER_ADDRESS   Only for email/Magic wallets
+#
+# USAGE:
+#   poetry run btc-5m-bot --config config/btc_5m_bot.yaml
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── General ──────────────────────────────────────────────────────────────────
+general:
+  # Master switch: false = run model + display only, no orders placed
+  enabled: true
+  # Seconds between each fetch-evaluate loop
+  poll_interval_seconds: 2.0
+  # Path to pre-computed reversal probability dataset (parquet)
+  reversal_dataset_path: "data/crypto/btc/reversal_dataset.parquet"
+  # Smoothing bandwidth for the delta axis (USD); higher = smoother model
+  delta_bandwidth_usd: 50.0
+  # Smoothing bandwidth for the time axis (seconds); higher = smoother model
+  time_bandwidth_seconds: 30.0
+
+# ─── Price Sources ────────────────────────────────────────────────────────────
+price_sources:
+  # Primary: Chainlink Data Streams page (same source Polymarket uses)
+  chainlink_streams_url: "https://data.chain.link/streams/btc-usd-cexprice-streams?timeframe=1minute"
+  # Fallback: Polygon Chainlink on-chain feed address
+  chainlink_polygon_address: "0xc907E116054Ad103354f2D350FD2514433D57F6f"
+  # Polygon RPC endpoint for on-chain fallback
+  polygon_rpc: "https://polygon-rpc.com"
+  # Binance symbol for live price polling
+  binance_symbol: "BTCUSDT"
+  # Max attempts to capture price at window boundary
+  boundary_retries: 3
+  # Seconds between boundary capture retries
+  boundary_retry_delay: 1.0
+
+# ─── Display ──────────────────────────────────────────────────────────────────
+display:
+  # Show the terminal dashboard
+  enabled: true
+  # Show detailed per-tick information
+  verbose: true
+  # Clear screen between updates (set false if piping to logs)
+  clear_screen: false
+
+# ─── Trading ──────────────────────────────────────────────────────────────────
+trading:
+  # Enable real order placement (false = monitor only)
+  enabled: false
+  # Direction override: auto | up | down
+  #   auto = model decides based on current delta
+  direction: "auto"
+  # Probability tiers: if P(reversal) < threshold, buy `shares` of the leading direction
+  tiers:
+    - max_reversal_prob: 0.10   # Very high confidence → buy 3 shares
+      shares: 3
+    - max_reversal_prob: 0.20   # High confidence → buy 2 shares
+      shares: 2
+    - max_reversal_prob: 0.30   # Moderate confidence → buy 1 share
+      shares: 1
+  # Maximum number of trades per 5-minute window
+  max_trades_per_window: 3
+  # Maximum total USDC exposure across all open positions
+  max_total_position_usdc: 50.0
+  # Don't trade if fewer than this many seconds remain in the window
+  min_seconds_remaining: 30
+  # CLOB API signature type (0 = MetaMask, 1 = email/Magic)
+  signature_type: 0
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  # Log level: DEBUG | INFO | WARNING | ERROR
+  level: "INFO"
+  # Use JSON structured logs
+  use_json: false

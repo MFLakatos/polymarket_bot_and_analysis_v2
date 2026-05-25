@@ -1,0 +1,132 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# config/polymarket.yaml
+#
+# PURPOSE: Controls the Polymarket graph analytics pipeline.
+#   - Polymarket API connections (Gamma API, Data API, CLOB API)
+#   - Neo4j graph database connection parameters
+#   - Ingestion behavior (batch sizes, retries, checkpoints)
+#   - Feature engineering, clustering, and influence analysis settings
+#   - Visualization & export options
+#
+# USAGE:
+#   poetry run polymarket-graph --config config/polymarket.yaml run-all
+#
+# ENVIRONMENT OVERRIDES (secrets — never commit these):
+#   NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, NEO4J_DATABASE
+#   LOG_LEVEL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── API Mode ────────────────────────────────────────────────────────────────
+# Which source(s) to use for ingestion.
+# gamma_api  → Historical markets + trades via public REST API (no auth needed)
+# clob_api   → Live order-book data via CLOB REST API (no auth needed)
+# hybrid     → Both sources, deduplicated (recommended)
+api_mode: hybrid
+
+# ─── Ingestion ────────────────────────────────────────────────────────────────
+ingestion:
+  gamma_api:
+    # Base URL for market metadata (markets, events, tags)
+    base_url: "https://gamma-api.polymarket.com"
+    # Base URL for trade history (all fills, wallet activity)
+    trades_base_url: "https://data-api.polymarket.com"
+    # How many records to request per HTTP page
+    batch_size: 100
+    # Max API calls per second (stay under Polymarket rate limits)
+    rate_limit_per_sec: 5.0
+    # How many times to retry a failed request before giving up
+    max_retries: 5
+    # HTTP timeout in seconds per request
+    timeout_seconds: 30
+
+  clob_api:
+    # Base URL for the CLOB (Central Limit Order Book) REST API
+    base_url: "https://clob.polymarket.com"
+    # Records per page (CLOB supports larger pages)
+    batch_size: 500
+    # Max calls per second
+    rate_limit_per_sec: 8.0
+    # Retry count on transient failures
+    max_retries: 5
+    # HTTP timeout per request
+    timeout_seconds: 30
+
+  # Path to JSON file that tracks the last ingested timestamp (prevents re-fetching)
+  checkpoint_path: "data/checkpoints/ingestion_state.json"
+  # Directory for raw JSONL files from APIs
+  raw_path: "data/raw"
+  # Directory for cleaned/normalized data files
+  intermediate_path: "data/intermediate"
+
+# ─── Neo4j Database ──────────────────────────────────────────────────────────
+neo4j:
+  # Bolt connection string (override with NEO4J_URI env var in production)
+  uri: "bolt://localhost:7687"
+  # Username (override with NEO4J_USER env var)
+  user: "neo4j"
+  # Password (override with NEO4J_PASSWORD env var — do NOT commit real passwords)
+  password: "change_me_strong_password"
+  # Target database name
+  database: "neo4j"
+  # How many nodes/rels to MERGE in a single Cypher batch
+  batch_size: 5000
+
+# ─── Feature Engineering ──────────────────────────────────────────────────────
+features:
+  # Wallets with fewer trades than this are excluded from clustering
+  min_trades_per_wallet: 5
+  # Time window (minutes) used to flag "early" traders in a market
+  early_window_minutes: 60
+  # Whether to run PCA dimensionality reduction for visualization
+  enable_pca: true
+  # Whether to run UMAP (slower but nonlinear; requires 'viz' extra)
+  enable_umap: false
+  # Whether to stream live Neo4j updates during analysis
+  enable_live_updates: false
+
+# ─── Clustering ───────────────────────────────────────────────────────────────
+clustering:
+  # Algorithm to use: kmeans | dbscan
+  algorithm: "kmeans"
+  kmeans:
+    # Number of behavioral clusters to create
+    k: 6
+    # Random seed for reproducibility
+    random_state: 42
+  dbscan:
+    # Neighborhood radius (in feature space); lower = tighter clusters
+    eps: 0.5
+    # Minimum cluster size; points below this become noise (-1)
+    min_samples: 10
+  # Number of PCA dimensions to reduce to before clustering
+  pca_components: 2
+
+# ─── Influence Graph ──────────────────────────────────────────────────────────
+influence:
+  # Time window (minutes) to look back for lead/lag detection between wallets
+  lag_window_minutes: 30
+  # A wallet must be followed by at least this many others to be an "influencer"
+  min_followers: 3
+  # PageRank damping factor (standard: 0.85)
+  pagerank_alpha: 0.85
+
+# ─── Market Correlation ───────────────────────────────────────────────────────
+market_correlation:
+  # Minimum wallets that must co-trade two markets for them to be linked
+  min_shared_wallets: 5
+  # Cosine similarity threshold — pairs below this are not connected
+  cosine_threshold: 0.3
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  # Base directory for all generated files (CSVs, PNGs, HTMLs)
+  base_path: "output"
+  # Format for tabular exports: csv | json
+  export_format: "csv"
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  # Log level: DEBUG | INFO | WARNING | ERROR
+  level: "INFO"
+  # Use structured JSON logs (good for log aggregators); false = human-readable
+  use_json: false

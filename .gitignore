@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Secrets
+.env
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Data & outputs (keep .gitkeep)
+data/raw/*
+data/intermediate/*
+data/checkpoints/*
+data/crypto/**/*.parquet
+data/copy_trading/
+output/*
+!data/raw/.gitkeep
+!data/intermediate/.gitkeep
+!data/checkpoints/.gitkeep
+!output/.gitkeep
+!data/crypto/btc/.gitkeep
+
+*.csv
+*.log
+*.parquet
+*.png
+
+# Neo4j runtime dirs
+neo4j/data/
+neo4j/logs/
+neo4j/plugins/
+
+# Notebooks
+.ipynb_checkpoints/
+*.ipynb
