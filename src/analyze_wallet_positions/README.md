@@ -50,11 +50,13 @@ Requires `analyze` to have been run first.
 Produces `output/wallet_analysis/{wallet_id}/window_plots/window_YYYYMMDD_HHMMSS.png` for each window.
 
 Each chart shows:
-- 🔵 **Blue dots** — UP buys at their implied probability
-- 🔴 **Red dots** — DOWN buys at their implied probability
-- 🟢 **Green step line** — cumulative net return if UP wins (right axis)
-- 🟠 **Orange step line** — cumulative net return if DOWN wins (right axis)
-- ⬜ **White line** — BTC 1-second price, normalised to 0.5 at window open
+- 🔵 **Blue dots** — UP buys plotted at their implied probability (left axis)
+- 🔴 **Red dots** — DOWN buys plotted at their implied probability (left axis)
+- ⬜ **White line** — BTC 1-second close price, normalised so window-open = 0.5 on the left axis
+- 🟢 **Green step line** — cumulative net return if UP wins (inner right axis)
+- 🟠 **Orange step line** — cumulative net return if DOWN wins (inner right axis)
+- 💲 **Outer right axis** — actual BTC USD price scale. The open price, the 0.5 implied-probability line, and the +0.000 net-return zero line are all aligned at the same visual height.
+- **Bottom panel** — dBTC/dt (price derivative per second); teal = rising, red = falling
 
 ### `run-all` — Analyze + plot in one command
 

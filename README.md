@@ -30,15 +30,27 @@ polymarket_graph/
 │   │   ├── infrastructure/         ← Config loader, logging, Neo4j client
 │   │   └── cli.py                  ← polymarket-graph CLI
 │   │
-│   ├── crypto_data/                ← NEW: reusable crypto price data module
+│   ├── crypto_data/                ← Reusable crypto price data module
 │   │   ├── downloaders/            ← Binance OHLCV downloader (extensible)
 │   │   ├── loaders/                ← Load parquet + compute indicators
 │   │   ├── visualization/          ← Interactive Plotly charts
 │   │   ├── config.py               ← Pydantic config models
 │   │   └── cli.py                  ← crypto-data CLI
 │   │
+│   ├── btc_reversal_model/         ← BTC direction-reversal probability model
+│   │   ├── build_dataset.py        ← Downloads 1s data, labels reversal events
+│   │   ├── reversal_model.py       ← Gaussian kernel regression, O(1) grid lookup
+│   │   ├── visualize.py            ← Interactive HTML: 3D surface, heatmap, slices
+│   │   └── README.md
+│   │
+│   ├── analyze_wallet_positions/   ← Per-window P&L charts with BTC overlay
+│   │   ├── analyze_trades.py       ← Enriches trade CSV with timing + returns
+│   │   ├── plot_windows.py         ← Dark-theme PNG per 5-min window
+│   │   └── README.md
+│   │
 │   ├── copy_wallets_positions/     ← Copy trading bot
-│   ├── btc_price_1s/               ← BTC 5m reversal bot
+│   ├── btc_5m_trader/              ← BTC 5-minute reversal trading bot
+│   ├── btc_price_1s/               ← 1-second BTC price utilities
 │   ├── download_wallet_positions/  ← Wallet data download utility
 │   └── save_wallet_positions/      ← CSV saving helpers
 │
@@ -171,15 +183,53 @@ export POLYMARKET_PRIVATE_KEY="0x..."
 poetry run copy-trading --config config/copy_trading.yaml
 ```
 
-### `btc-5m-bot` — BTC Reversal Bot
+### `build-reversal-dataset` — Build Reversal Training Data
 
 ```bash
-# First generate the reversal probability dataset
-poetry run python src/btc_price_1s/price_reversal_probability_estimator.py
+# Download ~1.1 yr of 1-second BTC data and label reversal events
+poetry run build-reversal-dataset
 
-# Run the bot
+# Use only NYSE market-hours windows (Mon–Fri 09:30–16:00 ET, excl. Federal holidays)
+poetry run build-reversal-dataset --filter-market-hours
+
+# Custom data range and output
+poetry run build-reversal-dataset --hours 20000 --output data/crypto/BTC/my_reversal.parquet
+```
+
+Output: `data/crypto/BTC/reversal_dataset.parquet`
+
+### `visualize-reversal` — Interactive Reversal Model Explorer
+
+```bash
+# Generate self-contained HTML (opens in any browser, no internet required)
+poetry run visualize-reversal --output output/reversal_viz.html
+open output/reversal_viz.html
+
+# If dataset was built with --filter-market-hours, pass the flag for accurate Dataset Info tab
+poetry run visualize-reversal --filter-market-hours --output output/reversal_viz.html
+```
+
+The HTML has four tabs: **3D Surface** (rotate/zoom), **Heatmap** (top-down with contours), **Time Slices** (P vs Δ price at fixed time thresholds), and **Dataset Info** (training period, filter settings, kernel config).
+
+### `btc-5m-bot` — BTC Reversal Trading Bot
+
+```bash
+# Run the bot (requires reversal dataset to already be built)
 poetry run btc-5m-bot --config config/btc_5m_bot.yaml
 ```
+
+### `analyze-wallet` — Per-Window Trade Analysis & Charts
+
+```bash
+# Analyze a wallet's trade history + generate BTC-overlaid charts
+poetry run analyze-wallet run-all 0x476639d9845d7a0261cb005dae6473f089ff5a03
+
+# Steps separately
+poetry run analyze-wallet analyze 0x476639d9845d7a0261cb005dae6473f089ff5a03
+poetry run analyze-wallet plot    0x476639d9845d7a0261cb005dae6473f089ff5a03
+```
+
+Charts show trade dots on an implied-probability axis, BTC price with USD scale on a second right axis, and cumulative scenario returns — all three zero/reference lines aligned at the same visual height.
 
 ### `wallet-download` — Wallet Position Download
 
