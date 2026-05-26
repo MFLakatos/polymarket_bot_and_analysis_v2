@@ -241,14 +241,32 @@ def build(
     return out
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """CLI entry point for ``poetry run build-reversal-dataset``."""
     import argparse
-    parser = argparse.ArgumentParser(description="Build BTC reversal dataset.")
-    parser.add_argument("--hours", type=int, default=DEFAULT_HOURS)
-    parser.add_argument("--output", default=DEFAULT_OUTPUT)
+    parser = argparse.ArgumentParser(
+        description="Build BTC 5-min reversal dataset from Binance 1-second data.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--hours", type=int, default=DEFAULT_HOURS,
+        help="Hours of 1-second BTC history to download.",
+    )
+    parser.add_argument(
+        "--output", default=DEFAULT_OUTPUT,
+        help="Output parquet path.",
+    )
     parser.add_argument(
         "--filter-market-hours", action="store_true",
-        help="Keep only NYSE-hours windows (Mon–Fri 09:30–16:00 ET, excl. Federal holidays).",
+        help=(
+            "Keep only 5-min windows whose start falls inside NYSE trading hours "
+            "(Mon–Fri 09:30–16:00 ET, excl. US Federal holidays). "
+            "Weekends and holidays are dropped before labelling."
+        ),
     )
     args = parser.parse_args()
     build(hours=args.hours, output=args.output, filter_market_hours=args.filter_market_hours)
+
+
+if __name__ == "__main__":
+    cli()

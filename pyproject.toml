@@ -80,7 +80,7 @@ wallet-download    = "download_wallet_positions.cli:cli"
 # BTC 5-minute reversal bot (new modular version)
 btc-5m-bot         = "btc_5m_trader.cli:cli"
 # Build reversal dataset
-build-reversal-dataset = "btc_reversal_model.build_dataset:build"
+build-reversal-dataset = "btc_reversal_model.build_dataset:cli"
 # Candle pattern analyzer
 candle-patterns    = "candle_pattern_analyzer.cli:cli"
 # Wallet position analysis
