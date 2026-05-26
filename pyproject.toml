@@ -85,6 +85,8 @@ build-reversal-dataset = "btc_reversal_model.build_dataset:build"
 candle-patterns    = "candle_pattern_analyzer.cli:cli"
 # Wallet position analysis
 analyze-wallet     = "analyze_wallet_positions.cli:cli"
+# BTC reversal model visualizer
+visualize-reversal = "btc_reversal_model.visualize:cli"
 
 [build-system]
 requires = ["poetry-core>=1.7.0"]
