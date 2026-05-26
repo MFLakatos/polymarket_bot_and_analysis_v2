@@ -287,16 +287,28 @@ def plot_window(
         2, 1,
         height_ratios=[3.5, 1],
         hspace=0.07,
-        left=0.06, right=0.88, top=0.91, bottom=0.08,
+        left=0.06, right=0.80, top=0.91, bottom=0.08,
     )
     ax_prob = fig.add_subplot(gs[0])
     ax_drv  = fig.add_subplot(gs[1], sharex=ax_prob)
-    ax_ret  = ax_prob.twinx()    # right: scenario returns
+    ax_ret     = ax_prob.twinx()   # right: scenario returns
+    ax_btc_usd = ax_prob.twinx()   # right (offset): BTC actual USD price
+    ax_btc_usd.spines["right"].set_position(("outward", 65))
+    ax_btc_usd.patch.set_visible(False)
 
     # Style
-    _style(ax_prob, "Implied probability  /  BTC normalised (open = 0.5)", C_BTC)
-    _style(ax_ret,  "Net return (USDC)",    C_RET_UP)
-    _style(ax_drv,  "dBTC/dt  (USD/s)",     C_DERIV_P)
+    _style(ax_prob,    "Implied probability", C_BTC)
+    _style(ax_ret,     "Net return (USDC)",   C_RET_UP)
+    _style(ax_drv,     "dBTC/dt  (USD/s)",    C_DERIV_P)
+    # Style BTC USD axis
+    ax_btc_usd.spines["right"].set_edgecolor(C_BTC)
+    ax_btc_usd.set_ylabel("BTC price (USD)", color=C_BTC, fontsize=8.5)
+    ax_btc_usd.tick_params(axis="y", colors=C_BTC, labelsize=7.5)
+    ax_btc_usd.yaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda v, _: f"${v:,.0f}")
+    )
+    for _sp in ("left", "top", "bottom"):
+        ax_btc_usd.spines[_sp].set_visible(False)
 
     ax_prob.set_xlabel("", color=TXT)
     ax_drv .set_xlabel("Seconds in window", color=TXT, fontsize=8.5)
@@ -326,17 +338,12 @@ def plot_window(
                              where=[y <  0.5 for y in ys_n],
                              color=C_DOWN, alpha=0.07, step=None)
 
-        # Secondary USD tick labels on the LEFT spine
-        # Show ticks at 0.2, 0.35, 0.5, 0.65, 0.8 → convert to USD
-        prob_ticks = [0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.90]
-        usd_labels = [f"${p0 + (pt - 0.5) * usd_per_unit:,.0f}" for pt in prob_ticks]
-        ax2_usd = ax_prob.secondary_yaxis("left")
-        ax2_usd.set_yticks(prob_ticks)
-        ax2_usd.set_yticklabels(usd_labels, fontsize=6.5, color="#64748b")
-        ax2_usd.tick_params(length=3, width=0.5, colors="#64748b")
-        for sp in ax2_usd.spines.values():
-            sp.set_edgecolor(GRID)
-        # Keep primary ticks too (probability)
+        # Set BTC USD right axis: open price sits at center (y=0.5), aligned with
+        # the 0.5 implied-probability line and the +0.000 net return zero line.
+        btc_half = 0.5 * usd_per_unit
+        ax_btc_usd.set_ylim(p0 - btc_half, p0 + btc_half)
+
+        # Keep primary probability ticks
         ax_prob.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
         ax_prob.set_yticklabels(["0.00", "0.25", "0.50", "0.75", "1.00"],
                                 fontsize=8, color=TXT)
@@ -359,6 +366,7 @@ def plot_window(
             ymax = max(float(np.abs(drv_ys).max()), 1.0)
             ax_drv.set_ylim(-ymax * 1.4, ymax * 1.4)
     else:
+        ax_btc_usd.set_visible(False)
         ax_drv.text(WIN_SECS / 2, 0, "BTC data unavailable",
                     ha="center", va="center", color=TXT, fontsize=9)
 
@@ -384,6 +392,14 @@ def plot_window(
                             where=ys_rd >= 0, color=C_RET_DWN, alpha=0.09)
         ax_ret.fill_between(xs_a, ys_rd, 0, step="post",
                             where=ys_rd <  0, color=C_RET_DWN, alpha=0.04)
+
+        # Symmetric limits so 0 sits at the visual center (y=0.5), aligned with
+        # the 0.5 implied-probability line and the BTC open price.
+        all_ret_vals = ret_up + ret_dn
+        max_abs_ret  = max((abs(v) for v in all_ret_vals), default=0.0)
+        if max_abs_ret < 1e-9:
+            max_abs_ret = 1.0
+        ax_ret.set_ylim(-max_abs_ret * 1.3, max_abs_ret * 1.3)
 
         ax_ret.tick_params(axis="y", colors=C_RET_UP, labelsize=8)
         ax_ret.yaxis.set_major_formatter(
