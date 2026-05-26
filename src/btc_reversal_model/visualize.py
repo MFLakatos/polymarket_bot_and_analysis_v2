@@ -1,12 +1,14 @@
 """
 BTC Reversal Model – Interactive Visualizer
 ============================================
-Generates a self-contained HTML file with four interactive tabs:
+Generates a self-contained HTML file with five interactive tabs:
 
-  1. 3D Surface   – rotate & zoom the full P(reversal) probability landscape
-  2. Heatmap      – top-down 2-D view with contour lines; hover for exact values
-  3. Time slices  – P(reversal) vs Δ price at fixed time-remaining thresholds
-  4. Dataset info – training period, sample counts, filter settings, model config
+  1. 3D Surface    – rotate & zoom the full P(reversal) probability landscape
+  2. Heatmap       – top-down 2-D view with contour lines; hover for exact values
+  3. Time slices   – P(reversal) vs Δ price at fixed time-remaining thresholds
+  4. Dataset info  – training period, sample counts, filter settings, model config
+  5. Diagnostics   – training data density, kernel confidence map, and late-window
+                     time slices (250-299 s remaining) for model validation
 
 Each tab is a separate Plotly figure, avoiding the 3D/2D axis-space conflict
 that breaks heatmaps and scatter charts when mixed with go.Surface in one figure.
@@ -226,6 +228,171 @@ def _fig_slices(grid: np.ndarray, d_centers: list, t_centers: list, base_rate: f
     return fig
 
 
+# ── Diagnostics: data density + kernel confidence ─────────────────────────────
+
+def _fig_density_confidence(model):
+    """
+    Two-panel diagnostic figure:
+      Left  – 2D training-data density (log scale) shows where the kernel has data.
+      Right – Kernel confidence (normalised ΣW) shows where estimates are reliable.
+
+    Sparse / dark regions = model relies on few points and may be noisy.
+    """
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    d_arr = model._delta
+    t_arr = model._time
+
+    # ── 1. Training-data density (fast 2-D histogram) ─────────────────────────
+    nd_bins, nt_bins = 80, 60
+    H, d_edges_h, t_edges_h = np.histogram2d(d_arr, t_arr, bins=[nd_bins, nt_bins])
+    dc_h = ((d_edges_h[:-1] + d_edges_h[1:]) / 2).tolist()
+    tc_h = ((t_edges_h[:-1] + t_edges_h[1:]) / 2).tolist()
+    H_log = np.log1p(H).tolist()
+
+    # ── 2. Kernel confidence (coarse grid, subsampled for speed) ──────────────
+    rng   = np.random.default_rng(42)
+    n_sub = min(200_000, len(d_arr))
+    idx   = rng.choice(len(d_arr), n_sub, replace=False)
+    d_sub = d_arr[idx]
+    t_sub = t_arr[idx]
+
+    nd_c, nt_c = 50, 30
+    d_coarse = np.linspace(d_arr.min(), d_arr.max(), nd_c)
+    t_coarse = np.linspace(1.0, 299.0, nt_c)
+
+    # vectorised w_sum:  conf[i,j] = Σ_k  dw[i,k] * tw[j,k]
+    #   dw  (nd_c, n_sub)  @  tw.T  (n_sub, nt_c)  =  (nd_c, nt_c)
+    dw   = np.exp(-0.5 * ((d_sub[None, :] - d_coarse[:, None]) / model._delta_bw) ** 2)
+    tw   = np.exp(-0.5 * ((t_sub[None, :] - t_coarse[:, None]) / model._time_bw)  ** 2)
+    conf = (dw @ tw.T)
+    conf = (conf / conf.max()).tolist()
+
+    # ── Subplots ───────────────────────────────────────────────────────────────
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=[
+            "Training data density  (log scale)",
+            "Kernel confidence  (normalised ΣW — darker = less reliable)",
+        ],
+        horizontal_spacing=0.14,
+    )
+
+    fig.add_trace(go.Heatmap(
+        x=tc_h, y=dc_h, z=H_log,
+        colorscale="Blues",
+        colorbar=dict(
+            x=0.42, len=0.85,
+            title=dict(text="log(count+1)", font=dict(color=TXT, size=11)),
+            tickfont=dict(color=TXT),
+            bgcolor=BG, bordercolor=GRID_CLR,
+        ),
+        hovertemplate=(
+            "<b>Time remaining:</b> %{x:.0f} s<br>"
+            "<b>Δ price:</b> $%{y:+,.0f}<br>"
+            "<b>log(count+1):</b> %{z:.2f}<extra></extra>"
+        ),
+    ), row=1, col=1)
+
+    fig.add_trace(go.Heatmap(
+        x=t_coarse.tolist(), y=d_coarse.tolist(), z=conf,
+        colorscale="RdYlGn",
+        zmin=0, zmax=1,
+        colorbar=dict(
+            x=1.0, len=0.85,
+            title=dict(text="confidence", font=dict(color=TXT, size=11)),
+            tickfont=dict(color=TXT),
+            bgcolor=BG, bordercolor=GRID_CLR,
+        ),
+        hovertemplate=(
+            "<b>Time remaining:</b> %{x:.0f} s<br>"
+            "<b>Δ price:</b> $%{y:+,.0f}<br>"
+            "<b>Confidence:</b> %{z:.3f}<extra></extra>"
+        ),
+    ), row=1, col=2)
+
+    _ax = dict(gridcolor=GRID_CLR, zerolinecolor=GRID_CLR, tickfont=dict(color=TXT),
+               linecolor=GRID_CLR)
+    fig.update_xaxes(title_text="Time remaining (s)", title_font=dict(color=TXT), **_ax)
+    fig.update_yaxes(title_text="Δ price (USD)",      title_font=dict(color=TXT), **_ax)
+    fig.update_annotations(font_color=TXT_LIGHT)
+
+    layout = {**_COMMON_LAYOUT, "height": 540}
+    fig.update_layout(
+        **layout,
+        title=dict(
+            text="Model reliability — where does the kernel have enough data?",
+            font=dict(color=TITLE_CLR, size=14), x=0.03, xanchor="left",
+        ),
+    )
+    return fig
+
+
+def _fig_late_slices(model):
+    """
+    P(reversal) vs Δ price at high remaining-seconds (250, 260, 270, 280, 290, 299).
+
+    These are the 'early window' cases (only 1–50 seconds have elapsed).
+    At small |Δ| the reversal probability is HIGH (easy to reverse a small early move).
+    At large |Δ| it drops toward 0 (very hard to give back a massive early move).
+
+    Compare with the standard Time Slices tab which covers 30–240 s.
+    """
+    import plotly.graph_objects as go
+
+    grid      = model._grid
+    d_edges   = model._grid_delta_edges
+    t_edges   = model._grid_time_edges
+    d_centers = (d_edges[:-1] + d_edges[1:]) / 2
+    t_centers = (t_edges[:-1] + t_edges[1:]) / 2
+    t_arr     = np.array(t_centers)
+
+    late_targets = [250, 260, 270, 280, 290, 299]
+    late_colours = ["#06b6d4", "#3b82f6", "#8b5cf6", "#22c55e", "#eab308", "#ef4444"]
+    traces = []
+
+    for idx, t_target in enumerate(late_targets):
+        ti     = int(np.argmin(np.abs(t_arr - t_target)))
+        actual = float(t_arr[ti])
+        colour = late_colours[idx % len(late_colours)]
+        probs  = grid[:, ti].tolist()
+        traces.append(go.Scatter(
+            x=d_centers.tolist(), y=probs,
+            mode="lines", line=dict(color=colour, width=2.2),
+            name=f"{actual:.0f} s remaining  ({300-actual:.0f} s elapsed)",
+            hovertemplate=(
+                f"<b>Time remaining:</b> {actual:.0f} s<br>"
+                "<b>Δ price:</b> $%{x:+,.0f}<br>"
+                "<b>P(reversal):</b> %{y:.3f}<extra></extra>"
+            ),
+        ))
+
+    traces.append(go.Scatter(
+        x=[float(d_centers[0]), float(d_centers[-1])],
+        y=[model.base_rate, model.base_rate],
+        mode="lines", line=dict(color="#64748b", width=1.5, dash="dash"),
+        name=f"Base rate ({model.base_rate:.3f})",
+        hoverinfo="skip",
+    ))
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        **_COMMON_LAYOUT,
+        title=dict(
+            text=(
+                "P(reversal) at early window — time remaining 250–299 s<br>"
+                "<sup style='color:#64748b'>High P at small |Δ| = easy to reverse; "
+                "drops to 0 at large |Δ| = extreme early move rarely reverses</sup>"
+            ),
+            font=dict(color=TITLE_CLR, size=14), x=0.03, xanchor="left",
+        ),
+        xaxis=dict(title="Δ price from window open (USD)", **_AXIS_STYLE),
+        yaxis=dict(title="P(reversal)", range=[0, 1], **_AXIS_STYLE),
+    )
+    return fig
+
+
 # ── Dataset-info HTML panel ───────────────────────────────────────────────────
 
 def _html_info(meta: dict[str, Any]) -> str:
@@ -434,6 +601,8 @@ def _build_html(
     fig_heatmap,
     fig_slices,
     info_html: str,
+    fig_density_conf,
+    fig_late_slices,
     base_rate: float,
     first_ts: Any,
     last_ts: Any,
@@ -442,9 +611,11 @@ def _build_html(
     if first_ts and first_ts != "unknown":
         period = f" · data: {str(first_ts)[:10]} → {str(last_ts)[:10]}"
 
-    div_surface = _to_div(fig_surface, first=True)   # bundles Plotly JS inline
-    div_heatmap = _to_div(fig_heatmap, first=False)
-    div_slices  = _to_div(fig_slices,  first=False)
+    div_surface      = _to_div(fig_surface,      first=True)   # bundles Plotly JS inline
+    div_heatmap      = _to_div(fig_heatmap,      first=False)
+    div_slices       = _to_div(fig_slices,       first=False)
+    div_density_conf = _to_div(fig_density_conf, first=False)
+    div_late_slices  = _to_div(fig_late_slices,  first=False)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -465,6 +636,7 @@ def _build_html(
       <button class="tab-btn"         onclick="showTab('heatmap',  this)">🗺 Heatmap</button>
       <button class="tab-btn"         onclick="showTab('slices',   this)">📈 Time Slices</button>
       <button class="tab-btn"         onclick="showTab('info',     this)">ℹ️ Dataset Info</button>
+      <button class="tab-btn"         onclick="showTab('diag',     this)">🔍 Diagnostics</button>
     </div>
   </div>
 
@@ -472,6 +644,10 @@ def _build_html(
   <div id="tab-heatmap" class="tab-content">{div_heatmap}</div>
   <div id="tab-slices"  class="tab-content">{div_slices}</div>
   <div id="tab-info"    class="tab-content">{info_html}</div>
+  <div id="tab-diag"    class="tab-content">
+    {div_density_conf}
+    {div_late_slices}
+  </div>
 
   {_TAB_JS}
 </body>
@@ -553,13 +729,17 @@ def save_html(
     base_rate = float(model.base_rate)
 
     print("Building figures ...")
-    fig_s = _fig_surface(grid, d_centers, t_centers, base_rate)
-    fig_h = _fig_heatmap(grid, d_centers, t_centers, base_rate)
-    fig_l = _fig_slices(grid, d_centers, t_centers, base_rate)
-    info  = _html_info(meta)
+    fig_s  = _fig_surface(grid, d_centers, t_centers, base_rate)
+    fig_h  = _fig_heatmap(grid, d_centers, t_centers, base_rate)
+    fig_l  = _fig_slices(grid, d_centers, t_centers, base_rate)
+    info   = _html_info(meta)
+    print("Building diagnostics (density + confidence map) ...")
+    fig_dc = _fig_density_confidence(model)
+    fig_ls = _fig_late_slices(model)
 
     html = _build_html(
         fig_s, fig_h, fig_l, info,
+        fig_dc, fig_ls,
         base_rate=base_rate,
         first_ts=first_ts,
         last_ts=last_ts,
