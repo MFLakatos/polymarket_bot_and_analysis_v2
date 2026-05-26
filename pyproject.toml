@@ -2,7 +2,7 @@
 name = "polymarket-graph"
 version = "0.2.0"
 description = "Graph analytics, crypto data, and trading bots for Polymarket."
-authors = ["Matías Fernández Lakatos <mfernandezlakatos@gmail.com>"]
+authors = ["Polymarket Graph Team <dev@example.com>"]
 readme = "README.md"
 packages = [
     { include = "polymarket_graph", from = "src" },
@@ -15,6 +15,8 @@ packages = [
     { include = "btc_reversal_model", from = "src" },
     { include = "btc_5m_trader", from = "src" },
     { include = "analyze_wallet_positions", from = "src" },
+    { include = "bot_tools", from = "src" },
+    { include = "base_bot", from = "src" },
 ]
 
 [tool.poetry.dependencies]

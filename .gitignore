@@ -44,6 +44,7 @@ output/*
 *.log
 *.parquet
 *.png
+*.json
 
 # Neo4j runtime dirs
 neo4j/data/

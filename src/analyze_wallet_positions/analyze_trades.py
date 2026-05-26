@@ -47,7 +47,16 @@ def window_start_for(dt: datetime) -> datetime:
 def compute_returns(outcome: str, usdc_amount: float, shares: float = SHARE_SIZE):
     """
     Compute (return_if_up, return_if_down) for a single trade.
-    Each winning share pays $1.
+
+    Formula:
+        UP   trade, UP   wins: profit = shares × (1 - up_price)   = shares - usdc_amount
+        UP   trade, DOWN wins: loss   = -shares × up_price        = -usdc_amount
+        DOWN trade, UP   wins: loss   = -shares × down_price      = -usdc_amount
+        DOWN trade, DOWN wins: profit = shares × (1 - down_price) = shares - usdc_amount
+
+    Note: usdc_amount = price × shares, so:
+        shares - usdc_amount  = shares × (1 - price)  ← profit per winning trade
+        -usdc_amount          = -shares × price        ← loss per losing trade
     """
     outcome = outcome.strip().lower()
     if outcome == "up":
@@ -69,7 +78,8 @@ def load_bot_csv(path: Path) -> list[dict]:
                 secs = int((dt_open - win_start).total_seconds())
                 usdc = float(raw.get("usdc_amount") or 0)
                 outcome = raw.get("outcome", "").strip()
-                ret_up, ret_dn = compute_returns(outcome, usdc)
+                actual_shares = float(raw.get("size") or SHARE_SIZE)
+                ret_up, ret_dn = compute_returns(outcome, usdc, actual_shares)
                 rows.append({
                     "source":          "bot",
                     "market_title":    raw.get("market_title", "").strip(),
@@ -115,7 +125,8 @@ def load_wallet_csv(path: Path) -> list[dict]:
                 usdc = float(raw.get("size") or raw.get("usdcSize") or 0)
                 outcome = raw.get("outcome", raw.get("outcomeIndex", "")).strip()
                 price = float(raw.get("price") or 0)
-                ret_up, ret_dn = compute_returns(outcome, usdc)
+                actual_shares = float(raw.get("size") or SHARE_SIZE)
+                ret_up, ret_dn = compute_returns(outcome, usdc, actual_shares)
 
                 rows.append({
                     "source":          "wallet",

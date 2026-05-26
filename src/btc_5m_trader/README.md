@@ -1,7 +1,7 @@
 # BTC 5-Minute Reversal Bot
 
 Monitors Polymarket's **"BTC Up or Down 5m"** market and uses a statistical reversal probability model to decide when to trade. Includes a full **simulator** that replays historical trade logs to show what P&L would have been.
-Observation: `base rate = 0.393`: Is the unconditional probability of reversal across all 83,402 training samples — before conditioning on any delta or time. 39.3% of all seconds in the training windows saw the price reverse direction at some point before the window ended. It's just the prior. The model's job is to give you a conditional probability that's lower than this when BTC has moved far with little time left.
+
 ---
 
 ## Quick Start

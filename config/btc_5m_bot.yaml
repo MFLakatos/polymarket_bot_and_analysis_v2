@@ -31,6 +31,21 @@ general:
   # Smoothing bandwidth for the time axis (seconds); higher = smoother model
   time_bandwidth_seconds: 30.0
 
+  # ATR gate: skip trade if Normalized ATR > this % value (null = disabled)
+  # NATR = (ATR / close) × 100. High NATR = volatile, low NATR = trending.
+  # Recommended: 2.0–4.0 for BTC 5m. null disables the filter entirely.
+  max_natr: null
+
+  # ATR smoothing period (Wilder's EWM: alpha = 1/period)
+  atr_period: 14
+
+  # Directory where decision logs are saved (one CSV per session)
+  log_dir: "output/logs"
+
+  # Log every tick (not just trades/skips) — useful for deep backtest analysis
+  # Warning: produces large files during long sessions
+  log_every_tick: false
+
 # ─── Price Sources ────────────────────────────────────────────────────────────
 price_sources:
   # Primary: Chainlink Data Streams page (same source Polymarket uses)
@@ -57,27 +72,62 @@ display:
 
 # ─── Trading ──────────────────────────────────────────────────────────────────
 trading:
-  # Enable real order placement (false = monitor only)
+  # Execution mode: false = simulation only, true = live CLOB orders
   enabled: false
-  # Direction override: auto | up | down
-  #   auto = model decides based on current delta
-  direction: "auto"
-  # Probability tiers: if P(reversal) < threshold, buy `shares` of the leading direction
+
+  # MAX_ENTRY_PRICE: skip a trade if the estimated Polymarket share price
+  # exceeds this value. 1.0 = disabled (no cap).
+  # Example: 0.72 means skip if we'd pay more than $0.72 per share.
+  max_entry_price: 0.72
+
+  # Probability tiers: defines the TARGET share count at each confidence level.
+  # The bot uses a top-up approach: on each poll it finds the applicable tier
+  # (lowest threshold P(rev) qualifies for) and tops-up to that tier's share count.
+  # Example with tiers below: P(rev)=0.28 → buy 1; P(rev) drops to 0.05 → buy 2 more.
   tiers:
-    - max_reversal_prob: 0.10   # Very high confidence → buy 3 shares
+    - max_reversal_prob: 0.10   # P(rev) < 10% → 3 shares total
       shares: 3
-    - max_reversal_prob: 0.20   # High confidence → buy 2 shares
+    - max_reversal_prob: 0.20   # P(rev) < 20% → 2 shares total
       shares: 2
-    - max_reversal_prob: 0.30   # Moderate confidence → buy 1 share
+    - max_reversal_prob: 0.30   # P(rev) < 30% → 1 share total
       shares: 1
-  # Maximum number of trades per 5-minute window
-  max_trades_per_window: 3
-  # Maximum total USDC exposure across all open positions
-  max_total_position_usdc: 50.0
+    # P(rev) >= 30% → no trade
+
   # Don't trade if fewer than this many seconds remain in the window
   min_seconds_remaining: 30
-  # CLOB API signature type (0 = MetaMask, 1 = email/Magic)
+  # CLOB API signature type (0 = MetaMask/EOA, 1 = email/Magic)
   signature_type: 0
+
+
+# ─── Time Filter ──────────────────────────────────────────────────────────────
+# Controls when the bot is allowed to open new positions.
+# Applied at both window-open time (skips entire window) and trade time.
+time_filter:
+  # Block Saturday and Sunday windows (UTC calendar day)
+  exclude_weekends: false
+
+  # Block windows outside NYSE trading hours: 09:30–16:00 ET (DST-aware)
+  exclude_outside_nyse: false
+
+  # Block windows on NYSE public holidays
+  exclude_nyse_holidays: false
+
+  sessions:
+    # Enable session-based filtering
+    enabled: false
+
+    # ALLOW LIST: only trade during these sessions (others blocked).
+    # Leave empty to use the block list instead.
+    # Available: Asia, Europe, New_York, Overlap_EU_NY, Overlap_Asia_EU,
+    #            New_York_Extended, All
+    allowed_sessions: []
+    # Examples:
+    # allowed_sessions: ["New_York"]
+    # allowed_sessions: ["Europe", "New_York"]
+
+    # BLOCK LIST: never trade during these sessions.
+    # Ignored if allowed_sessions is non-empty.
+    blocked_sessions: []
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging:
