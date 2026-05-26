@@ -121,11 +121,64 @@ def download_1s_prices(hours: int = DEFAULT_HOURS, limit: int = 1000) -> pd.Data
 
 
 def load_or_download_1s(hours: int = DEFAULT_HOURS) -> pd.Series:
-    """Load 1s prices from cache, or download and cache."""
+    """
+    Load 1-second BTC close prices from cache, or download from Binance and cache.
+
+    Returns a pd.Series with a UTC DatetimeIndex named ``open_time``.
+
+    Cache format migration
+    ----------------------
+    Older versions of this code saved the raw Binance DataFrame (integer
+    RangeIndex, ``open_time`` as a plain column).  If such a file is detected
+    it is automatically converted to the canonical format (DatetimeIndex) and
+    the cache is overwritten so the migration only happens once.
+    """
     cache = Path(CACHE_FILE_1S)
     if cache.exists():
         print(f"Loading 1s cache from {cache}...")
-        price = pd.read_parquet(cache)["close"]
+        df    = pd.read_parquet(cache)
+
+        if isinstance(df.index, pd.DatetimeIndex):
+            # ── Canonical format ─────────────────────────────────────────────
+            price = df["close"]
+            if price.index.tz is None:
+                price.index = price.index.tz_localize("UTC")
+
+        elif "open_time" in df.columns:
+            # ── Legacy format: open_time is a column, not the index ──────────
+            print(
+                f"  [info] Legacy cache detected (RangeIndex + open_time column).\n"
+                f"         Converting to canonical format and overwriting {cache} …"
+            )
+            df["open_time"] = pd.to_datetime(df["open_time"], utc=True)
+            price = (
+                df.set_index("open_time")["close"]
+                .sort_index()
+                .resample("1s").last()
+                .ffill()
+            )
+            price.to_frame("close").to_parquet(cache)
+            print(f"  [info] Cache migrated → {cache}  ({len(price):,} rows)")
+
+        else:
+            raise ValueError(
+                f"Unrecognised cache format in {cache}.\n"
+                f"Index type: {type(df.index).__name__}, columns: {df.columns.tolist()}\n"
+                f"Delete the file and re-run to download fresh data."
+            )
+
+        span_days = (price.index[-1] - price.index[0]).total_seconds() / 86_400
+        print(
+            f"  Loaded {len(price):,} rows  "
+            f"({str(price.index[0])[:19]} UTC → {str(price.index[-1])[:19]} UTC, "
+            f"≈ {span_days:.1f} days)"
+        )
+        if span_days < hours / 24 * 0.5:
+            print(
+                f"  [warn] Cache covers only {span_days:.1f} days but --hours {hours} "
+                f"requests ~{hours/24:.0f} days.\n"
+                f"         Delete {cache} and re-run to download more history."
+            )
     else:
         raw_df = download_1s_prices(hours=hours)
         price = (
